@@ -7,7 +7,6 @@ from matplotlib import pyplot as plt
 import csv
 import copy
 
-
 class PSO_VRPTW:
     trunk_amount = None  # 货车数量
     trunk_volumes = None  # 货车各自的容量，共k辆车
@@ -55,15 +54,15 @@ class PSO_VRPTW:
         self.target_amount = len(target_volumes) #返回对象（字符、列表、元组等）长度或项目个数，即从需求容量矩阵返回需求个数
         #######
         self.n = 10 * len(target_service_time)  # 对于有时间窗，粒子数一般取10倍
-        self.dot_solutions = [[[], []] for i in range(self.n)]  # element len=2*L
+        self.dot_solutions = [[[], []] for i in range(self.n)]  # element len=2*L 维度为2L
         self.dot_bests = [None for i in range(self.n)]  # L
         self.dot_v = [None for i in range(self.n)]  # 2*L
-        self.dist = [(lambda x: [math.sqrt(math.pow(self.target_sites[0][x] - self.target_sites[0][y], 2)
+        self.dist = [(lambda x: [math.sqrt(math.pow(self.target_sites[0][x] - self.target_sites[0][y], 2)  #sqrt() 返回数字x的平方根，pow（）返回x的y次方的值
                                            + math.pow(self.target_sites[1][x] - self.target_sites[1][y], 2))
                                  for y in range(self.target_amount)])(i)
-                     for i in range(self.target_amount)]  # 邻接矩阵
+                     for i in range(self.target_amount)]  # 邻接矩阵，由坐标计算两个需求点之间的欧氏距离
 
-    def cost(self, solution):
+    def cost(self, solution):                #计算方案成本
         """ 计算方案solution的代价大小 """
         # 满足条件：1.总容量不超过汽车容量  2.在服务时间之内
         PE, PL = 10, 100  # pe为时间成本，pl为罚金成本
@@ -80,20 +79,20 @@ class PSO_VRPTW:
                     k_time += self.dist[pre_pos][i]
                     sum_dist += self.dist[pre_pos][i]
                     counter += 1
-                    if self.target_time_limits[0][i] > k_time and counter > 1:  # 说明可以提前到达(TODO:默认速度1m/s)
-                        k_time = self.target_time_limits[0][i]
-                        penalty += PE * (self.target_time_limits[0][i] - k_time)
-                    elif self.target_time_limits[1][i] < k_time:  # 说明迟到了(TODO:默认速度1m/s)
-                        penalty += PL * (k_time - self.target_time_limits[1][i])
-                    k_time += self.target_service_times[i]
-                    pre_pos = i  # 记录位置
-            k_time += self.dist[pre_pos][0]  # 回到起点
-            sum_dist += self.dist[pre_pos][0]
+                    if self.target_time_limits[0][i] > k_time and counter > 1:           # 说明可以提前到达(TODO:默认速度1m/s)   左时间窗大于到达时间，说明早到了
+                        k_time = self.target_time_limits[0][i]                          #此时需要等待，则到达时间为左时间窗
+                        penalty += PE * (self.target_time_limits[0][i] - k_time)         #有等待惩罚
+                    elif self.target_time_limits[1][i] < k_time:                  # 说明迟到了(TODO:默认速度1m/s)  #右时间窗，迟到
+                        penalty += PL * (k_time - self.target_time_limits[1][i])         #迟到惩罚
+                    k_time += self.target_service_times[i]               #加上服务时间     
+                    pre_pos = i  # 记录位置                              #至此i点被服务完
+            k_time += self.dist[pre_pos][0]                 # 回到起点
+            sum_dist += self.dist[pre_pos][0]                
             max_time = max_time if k_time < max_time else k_time
         return sum_dist + penalty  # TODO:由于sum_time暗含了sum_dist，其实只返回sum_time即可。至于回到原点的cost，不必计入
 
     def recode_solution(self, solution: list):
-        # 由于[3,1,2,1]与[3,2,1,2]  [1,2,3,2]方案实际上相同（数字代表车辆编号），需要进行重编码，编码从0开始
+        # 由于[3,1,2,1]与[3,2,1,2]  [1,2,3,2]方案实际上相同（数字代表车辆编号），需要进行重编码，编码从0开始？？？？？？？？？？？？？？？？
         temp = copy.deepcopy(solution[0])
         i, mapp = 0, dict()
         counter = [1 for i in range(self.trunk_amount)]
@@ -106,27 +105,27 @@ class PSO_VRPTW:
             solution[0][i] = mapp[solution[0][i]]
         return
 
-    def init_solution(self):
+    def init_solution(self):                #种群初始化
         for i in range(self.n):
             # dot i
             self.dot_solutions[i][0].clear()
             self.dot_solutions[i][1].clear()
             self.dot_solutions[i][0].append(0)  # 代表起点
             self.dot_solutions[i][1].append(0)  # 代表起点
-            mapp = dict()
+            mapp = dict()    #？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
             order = [0 for i in range(self.trunk_amount)]
             volumes = [0 for i in range(self.trunk_amount)]  # 记录k辆车的容量
-            for j in range(1, self.target_amount):
-                No_ = random.randint(0, self.trunk_amount - 1)  # 代表抽中车的序号
+            for j in range(1, self.target_amount):   #对于每一个客户点
+                No_ = random.randint(0, self.trunk_amount - 1)  # 抽一辆货车，代表抽中车的序号
                 counter = 0
                 if No_ not in mapp:  # 如果不在map中，生成对应的车辆编号映射
                     mapp[No_] = len(mapp)
-                while volumes[No_] + self.target_volumes[j] > self.trunk_volumes[No_]:  # TODO:如果超出容量限制，继续抽奖
-                    No_ = random.randint(0, self.trunk_amount - 1)
+                while volumes[No_] + self.target_volumes[j] > self.trunk_volumes[No_]:  # TODO:如果超出这辆车容量限制，继续抽
+                    No_ = random.randint(0, self.trunk_amount - 1)   #在其他的车中再抽一辆
                     counter += 1
                     if No_ not in mapp:  # 如果不在map中，生成对应的车辆编号映射
                         mapp[No_] = len(mapp)
-                    if counter > 0xffff:
+                    if counter > 0xffff:      #？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
                         print('车辆容量严重不足，无法装载所有货物，无解')
                         return -1
                 self.dot_solutions[i][0].append(mapp[No_])  # mapp[No_]接下第j个任务
@@ -140,9 +139,9 @@ class PSO_VRPTW:
         pos, i = 0, 0
         while i < len(self.dot_solutions):
             # print('solution[', i, ']=', self.cost(self.dot_solutions[i]))
-            if self.cost(self.dot_solutions[i]) < min_cost:
-                min_cost = self.cost(self.dot_solutions[i])
-                pos = i  # 记录best solution position
+            if self.cost(self.dot_solutions[i]) < min_cost:    #如果新解的成本小于最小成本
+                min_cost = self.cost(self.dot_solutions[i])     #则新解成为新的最优解
+                pos = i  # 记录best solution position         #记录此时的粒子位置
             i += 1
         self.losses.append(min_cost)
         if pos != 0:
@@ -150,9 +149,9 @@ class PSO_VRPTW:
 
     def update_dot_best(self):
         # 更新每个粒子的历史最优值
-        for i in range(self.n):
-            if (self.dot_bests[i] is None) or self.cost(self.dot_solutions[i]) < self.cost(self.dot_bests[i]):
-                self.dot_bests[i] = copy.deepcopy(self.dot_solutions[i])
+        for i in range(self.n):     #对于每一个粒子 
+            if (self.dot_bests[i] is None) or self.cost(self.dot_solutions[i]) < self.cost(self.dot_bests[i]):  #如果新解的成本小于原来的最优解
+                self.dot_bests[i] = copy.deepcopy(self.dot_solutions[i])       #新的位置取代之前的最优
 
     def draw_pic(self):
         # 画结果
@@ -181,7 +180,7 @@ class PSO_VRPTW:
             y = k * 10  # 纵轴
             time, pre, counter = 0, 0, 0
             for j in range(1, self.target_amount):
-                if self.best_solution[0][j] == k:
+                if self.best_solution[0][j] == k:           #j点由车k服务
                     time += self.dist[pre][j]
                     time = time if self.target_time_limits[0][j] < time else self.target_time_limits[0][j]
                     plt.scatter(time, y, color='', marker='o', edgecolors='b', s=50)
@@ -253,7 +252,7 @@ def read_in_data(path: str, row_num):
             return a[4] - b[4]
         return a[3] - b[3]
     # TODO:数据先按时间排序
-    data = [[[], []], [], [[], []], []]  # 坐标，容量，时间起止，服务时长
+    data = [[[], []], [], [[], []], []]  # 坐标2，容量，时间起止2，服务时长
     data_in = []
     with open(path) as file:
         csvf = csv.reader(file)
