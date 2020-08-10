@@ -50,17 +50,70 @@ class PSO_VRPTW:
         self.target_time_limits = target_time_limits
         self.target_volumes = target_volumes
         self.target_service_times = target_service_times
-        self.trunk_amount = len(trunk_volumes) #返回对象（字符、列表、元组等）长度或项目个数，即从货车容量矩阵返回货车个数
-        self.target_amount = len(target_volumes) #返回对象（字符、列表、元组等）长度或项目个数，即从需求容量矩阵返回需求个数
-        #######
-        self.n = 10 * len(target_service_time)  # 对于有时间窗，粒子数一般取10倍
+        self.trunk_amount = len(trunk_volumes)
+        self.target_amount = len(target_volumes)
+        
+        self.n = 10 * len(target_service_times)  # 对于有时间窗，粒子数一般取10倍
         self.dot_solutions = [[[], []] for i in range(self.n)]  # element len=2*L 维度为2L
         self.dot_bests = [None for i in range(self.n)]  # L
         self.dot_v = [None for i in range(self.n)]  # 2*L
-        self.dist = [(lambda x: [math.sqrt(math.pow(self.target_sites[0][x] - self.target_sites[0][y], 2)  #sqrt() 返回数字x的平方根，pow（）返回x的y次方的值
-                                           + math.pow(self.target_sites[1][x] - self.target_sites[1][y], 2))
-                                 for y in range(self.target_amount)])(i)
-                     for i in range(self.target_amount)]  # 邻接矩阵，由坐标计算两个需求点之间的欧氏距离
+        
+        # 二维数组，任意两个点至今的欧氏距离
+        self.dist = [(lambda x: [math.sqrt(math.pow(self.target_sites[0][x] - self.target_sites[0][y], 2) + math.pow(self.target_sites[1][x] - self.target_sites[1][y], 2)) for y in range(self.target_amount)])(i) for i in range(self.target_amount)]
+
+    def run(self):
+        """ 粒子群算法的入口 """
+        # 粒子群划分为两两重叠的相邻子群
+        # TODO:每个粒子solution初始化,可能方案无法做到K辆车都用上?
+        self.init_solution()
+        # 每个粒子速度v
+        # 用cost评价各粒子效果
+        self.dot_bests = copy.deepcopy(self.dot_solutions)  # 替换各粒子最优solution
+        self.update_best_solution()  # 更新best solution
+        # 迭代epoch轮
+        for epoch in range(400):
+            if epoch % 10 == 0:
+                print(epoch, 'Best cost:', self.cost(self.best_solution))
+            if epoch % 100 == 0:
+                self.rate /= 2
+            # 更新solution
+            self.dot_improve()
+            # 重新编码
+            for i in self.dot_solutions:
+                self.recode_solution(i)
+            # update best solution
+            self.update_dot_best()
+            self.update_best_solution()
+        print("Best solution:\n", self.best_solution[0], '\n', self.best_solution[1])
+        self.draw_pic()
+
+    def init_solution(self):                #种群初始化
+        for i in range(self.n):
+            # dot i
+            self.dot_solutions[i][0].clear()
+            self.dot_solutions[i][1].clear()
+            self.dot_solutions[i][0].append(0)  # 代表起点
+            self.dot_solutions[i][1].append(0)  # 代表起点
+            mapp = dict()
+            order = [0 for i in range(self.trunk_amount)]
+            volumes = [0 for i in range(self.trunk_amount)]  # 记录k辆车的容量
+            for j in range(1, self.target_amount):   #对于每一个客户点
+                No_ = random.randint(0, self.trunk_amount - 1)  # 抽一辆货车，代表抽中车的序号
+                counter = 0
+                if No_ not in mapp:  # 如果不在map中，生成对应的车辆编号映射
+                    mapp[No_] = len(mapp)
+                while volumes[No_] + self.target_volumes[j] > self.trunk_volumes[No_]:  # TODO:如果超出这辆车容量限制，继续抽
+                    No_ = random.randint(0, self.trunk_amount - 1)   #在其他的车中再抽一辆
+                    counter += 1
+                    if No_ not in mapp:  # 如果不在map中，生成对应的车辆编号映射
+                        mapp[No_] = len(mapp)
+                    if counter > 0xffff:
+                        print('车辆容量严重不足，无法装载所有货物，无解')
+                        return -1
+                self.dot_solutions[i][0].append(mapp[No_])  # mapp[No_]接下第j个任务
+                order[mapp[No_]] += 1
+                self.dot_solutions[i][1].append(order[mapp[No_]])
+                volumes[No_] += self.target_volumes[j]
 
     def cost(self, solution):                #计算方案成本
         """ 计算方案solution的代价大小 """
@@ -104,34 +157,6 @@ class PSO_VRPTW:
             counter[mapp[solution[0][i]]] += 1
             solution[0][i] = mapp[solution[0][i]]
         return
-
-    def init_solution(self):                #种群初始化
-        for i in range(self.n):
-            # dot i
-            self.dot_solutions[i][0].clear()
-            self.dot_solutions[i][1].clear()
-            self.dot_solutions[i][0].append(0)  # 代表起点
-            self.dot_solutions[i][1].append(0)  # 代表起点
-            mapp = dict()    #？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
-            order = [0 for i in range(self.trunk_amount)]
-            volumes = [0 for i in range(self.trunk_amount)]  # 记录k辆车的容量
-            for j in range(1, self.target_amount):   #对于每一个客户点
-                No_ = random.randint(0, self.trunk_amount - 1)  # 抽一辆货车，代表抽中车的序号
-                counter = 0
-                if No_ not in mapp:  # 如果不在map中，生成对应的车辆编号映射
-                    mapp[No_] = len(mapp)
-                while volumes[No_] + self.target_volumes[j] > self.trunk_volumes[No_]:  # TODO:如果超出这辆车容量限制，继续抽
-                    No_ = random.randint(0, self.trunk_amount - 1)   #在其他的车中再抽一辆
-                    counter += 1
-                    if No_ not in mapp:  # 如果不在map中，生成对应的车辆编号映射
-                        mapp[No_] = len(mapp)
-                    if counter > 0xffff:      #？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
-                        print('车辆容量严重不足，无法装载所有货物，无解')
-                        return -1
-                self.dot_solutions[i][0].append(mapp[No_])  # mapp[No_]接下第j个任务
-                order[mapp[No_]] += 1  # 顺序从1开始记 i.e. 1,2,3,4,5...
-                self.dot_solutions[i][1].append(order[mapp[No_]])  # 记录顺序
-                volumes[No_] += self.target_volumes[j]  # 汽车容量++
 
     def update_best_solution(self):
         # 更新全局最优解
@@ -219,33 +244,6 @@ class PSO_VRPTW:
                 temp_volumes[self.dot_solutions[i][0][j]] += self.target_volumes[j]
         # 必须满足货车容量>=任务要求，尽量满足[ET,LT]之间送货
 
-    def run(self):
-        """ 粒子群算法的入口 """
-        # 粒子群划分为两两重叠的相邻子群
-        # TODO:每个粒子solution初始化,可能方案无法做到K辆车都用上?
-        self.init_solution()
-        # 每个粒子速度v
-        # 用cost评价各粒子效果
-        self.dot_bests = copy.deepcopy(self.dot_solutions)  # 替换各粒子最优solution
-        self.update_best_solution()  # 更新best solution
-        # 迭代epoch轮
-        for epoch in range(400):
-            if epoch % 10 == 0:
-                print('Best cost:', self.cost(self.best_solution))
-            if epoch % 100 == 0:
-                self.rate /= 2
-            # 更新solution
-            self.dot_improve()
-            # 重新编码
-            for i in self.dot_solutions:
-                self.recode_solution(i)
-            # update best solution
-            self.update_dot_best()
-            self.update_best_solution()
-        print("Best solution:\n", self.best_solution[0], '\n', self.best_solution[1])
-        self.draw_pic()
-
-
 def read_in_data(path: str, row_num):
     def func_cmp(a, b):
         if a[3] == b[3]:
@@ -254,14 +252,19 @@ def read_in_data(path: str, row_num):
     # TODO:数据先按时间排序
     data = [[[], []], [], [[], []], []]  # 坐标2，容量，时间起止2，服务时长
     data_in = []
+
     with open(path) as file:
         csvf = csv.reader(file)
-        csvf.__next__()  # 标题
+        csvf.__next__()  # 移除标题
         for i in range(row_num):
             line = csvf.__next__()  # 一行数据
+            # 第一列是序号，不取
             ele = [int(line[1]), int(line[2]), int(line[3]), int(line[4]), int(line[5]), int(line[6])]
             data_in.append(ele)
+    
+    # 先根据 READY TIME 排序，再根据 DUE TIME 排序
     data_in = sorted(data_in, key=functools.cmp_to_key(func_cmp))
+    
     for i in data_in:
         data[0][0].append(i[0])  # 坐标x
         data[0][1].append(i[1])  # 坐标y
@@ -273,12 +276,12 @@ def read_in_data(path: str, row_num):
 
 
 if __name__ == "__main__":
-    data = read_in_data('./input/rc101.csv', 51)  # 读取1原点+50个订单=51
-    trunk_volume = [200 for i in range(13)]  # 默认200，共10辆车
-    target_site = data[0]
-    target_volume = data[1]
-    target_time_limit = data[2]
-    target_service_time = data[3]
+    data = read_in_data('./input/rc101.csv', 51)  # 50 行，1 行为标题行
+    trunk_volume = [200 for i in range(13)]  # 默认200，共13辆车
+    target_site = data[0] # 坐标集
+    target_volume = data[1] # 需求集
+    target_time_limit = data[2] # 起始时间和结束时间
+    target_service_time = data[3] # 服务时间集
     pso = PSO_VRPTW(trunk_volume, target_site, target_time_limit, target_volume, target_service_time)
     pso.run()  # 计算解
     # TODO:循环使用车辆？
