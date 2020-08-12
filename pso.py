@@ -109,26 +109,21 @@ class PSO_VRPTW:
         No_ = random.randint(0, self.trunk_amount - 1)  # 抽一辆货车，代表抽中车的序号
         counter = 0
 
-        if No_ not in mapp:
-          mapp[No_] = len(mapp)
-
         # TODO: 如果超出这辆车容量限制，继续抽
         while volumes[No_] + self.target_volumes[j] > self.trunk_volumes[No_]:
-          No_ = random.randint(0, self.trunk_amount - 1)   # 在其他的车中再抽一辆
+          No_ = random.randint(0, self.trunk_amount - 1)
           counter += 1
-
-          if No_ not in mapp:
-            mapp[No_] = len(mapp)
 
           if counter > 0xffff:
             print('车辆容量严重不足，无法装载所有货物，无解')
             return -1
 
+        if No_ not in mapp: mapp[No_] = 0
+        mapp[No_] += 1
+
         # 发货点对应的车辆编号
         self.dot_solutions[i][0].append(No_)
-
         # 发货点相对于车辆的服务次序
-        mapp[No_] += 1
         self.dot_solutions[i][1].append(mapp[No_])
 
         # 更新车辆剩余装载量
@@ -141,6 +136,7 @@ class PSO_VRPTW:
       max_time = 0  # k辆车中耗时最长的
       sum_dist = 0  # 总距离
       penalty = 0  # 惩罚
+
       for k in range(self.trunk_amount):  # 分别计算第k辆车的代价
           pre_pos, pre_time = 0, 0  # 之前的位置（初始在原点），上一步结束的时间
           k_time = 0  # 花费时间
@@ -161,6 +157,7 @@ class PSO_VRPTW:
           k_time += self.dist[pre_pos][0]                 # 回到起点
           sum_dist += self.dist[pre_pos][0]
           max_time = max_time if k_time < max_time else k_time
+
       return sum_dist + penalty  # TODO:由于sum_time暗含了sum_dist，其实只返回sum_time即可。至于回到原点的cost，不必计入
 
   def recode_solution(self, solution: list):
