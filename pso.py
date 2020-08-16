@@ -73,11 +73,11 @@ class PSO_VRPTW:
     self.dot_bests = copy.deepcopy(self.dot_solutions)  # 替换各粒子最优solution
     self.update_best_solution()  # 更新best solution
 
-    for epoch in range(400):
-      if epoch % 10 == 0:
-        print(epoch, 'Best cost:', self.cost(self.best_solution))
+    for r in range(400):
+      if r % 10 == 0:
+        print(r, 'Best cost:', self.cost(self.best_solution))
 
-      if epoch % 100 == 0:
+      if r % 100 == 0:
         self.rate /= 2
 
       self.dot_improve()
@@ -130,49 +130,60 @@ class PSO_VRPTW:
         volumes[No_] += self.target_volumes[j]
 
   def cost(self, solution):                #计算方案成本
-      """ 计算方案solution的代价大小 """
-      # 满足条件：1.总容量不超过汽车容量  2.在服务时间之内
-      PE, PL = 10, 100  # pe为时间成本，pl为罚金成本
-      max_time = 0  # k辆车中耗时最长的
-      sum_dist = 0  # 总距离
-      penalty = 0  # 惩罚
+    """ 计算方案solution的代价大小 """
+    # 满足条件：1.总容量不超过汽车容量  2.在服务时间之内
+    PE, PL = 10, 100  # pe为时间成本，pl为罚金成本
+    max_time = 0  # k辆车中耗时最长的
+    sum_dist = 0  # 总距离
+    penalty = 0  # 惩罚
 
-      for k in range(self.trunk_amount):  # 分别计算第k辆车的代价
-          pre_pos, pre_time = 0, 0  # 之前的位置（初始在原点），上一步结束的时间
-          k_time = 0  # 花费时间
-          counter = 0
-          for i in range(1, len(solution[0])):
-              # solution[0] 完成该任务车辆k编号    solution[1] 该任务在的车辆次序
-              if solution[0][i] == k:  # 正好是第k辆车处理的订单
-                  k_time += self.dist[pre_pos][i]
-                  sum_dist += self.dist[pre_pos][i]
-                  counter += 1
-                  if self.target_time_limits[0][i] > k_time and counter > 1:           # 说明可以提前到达(TODO:默认速度1m/s)   左时间窗大于到达时间，说明早到了
-                      k_time = self.target_time_limits[0][i]                          #此时需要等待，则到达时间为左时间窗
-                      penalty += PE * (self.target_time_limits[0][i] - k_time)         #有等待惩罚
-                  elif self.target_time_limits[1][i] < k_time:                  # 说明迟到了(TODO:默认速度1m/s)  #右时间窗，迟到
-                      penalty += PL * (k_time - self.target_time_limits[1][i])         #迟到惩罚
-                  k_time += self.target_service_times[i]               #加上服务时间
-                  pre_pos = i  # 记录位置                              #至此i点被服务完
-          k_time += self.dist[pre_pos][0]                 # 回到起点
-          sum_dist += self.dist[pre_pos][0]
-          max_time = max_time if k_time < max_time else k_time
+    for k in range(self.trunk_amount):  # 分别计算第k辆车的代价
+      pre_pos, pre_time = 0, 0  # 之前的位置（初始在原点），上一步结束的时间
+      k_time = 0  # 花费时间
+      counter = 0
+      for i in range(1, len(solution[0])):
+        # solution[0] 完成该任务车辆k编号
+        # solution[1] 该任务在的车辆次序
+        if solution[0][i] == k:  # 正好是第 k 辆车处理的订单
+          k_time += self.dist[pre_pos][i]
+          sum_dist += self.dist[pre_pos][i]
+          counter += 1
+          # 说明可以提前到达(TODO:默认速度1m/s)   左时间窗大于到达时间，说明早到了
+          if self.target_time_limits[0][i] > k_time and counter > 1:
+            #此时需要等待，则到达时间为左时间窗
+            k_time = self.target_time_limits[0][i]
+            #有等待惩罚
+            penalty += PE * (self.target_time_limits[0][i] - k_time)
 
-      return sum_dist + penalty  # TODO:由于sum_time暗含了sum_dist，其实只返回sum_time即可。至于回到原点的cost，不必计入
+          # 说明迟到了(TODO:默认速度1m/s)  #右时间窗，迟到
+          elif self.target_time_limits[1][i] < k_time:
+            #迟到惩罚
+            penalty += PL * (k_time - self.target_time_limits[1][i])
+          #加上服务时间
+          k_time += self.target_service_times[i]
+          # 记录位置 至此i点被服务完
+          pre_pos = i
+      # 回到起点
+      k_time += self.dist[pre_pos][0]
+      sum_dist += self.dist[pre_pos][0]
+      max_time = max_time if k_time < max_time else k_time
+
+    # TODO:由于sum_time暗含了sum_dist，其实只返回sum_time即可。至于回到原点的cost，不必计入
+    return sum_dist + penalty
 
   def recode_solution(self, solution: list):
-      # 由于[3,1,2,1]与[3,2,1,2]  [1,2,3,2]方案实际上相同（数字代表车辆编号），需要进行重编码，编码从0开始？？？？？？？？？？？？？？？？
-      temp = copy.deepcopy(solution[0])
-      i, mapp = 0, dict()
-      counter = [1 for i in range(self.trunk_amount)]
-      for i in range(self.target_amount):
-          if solution[0][i] not in mapp:
-              mapp[solution[0][i]] = len(mapp)
-      for i in range(self.target_amount):  # 替换编码
-          solution[1][i] = counter[mapp[solution[0][i]]]
-          counter[mapp[solution[0][i]]] += 1
-          solution[0][i] = mapp[solution[0][i]]
-      return
+    # 由于[3,1,2,1]与[3,2,1,2]  [1,2,3,2]方案实际上相同（数字代表车辆编号），需要进行重编码，编码从0开始？？？？？？？？？？？？？？？？
+    temp = copy.deepcopy(solution[0])
+    i, mapp = 0, dict()
+    counter = [1 for i in range(self.trunk_amount)]
+    for i in range(self.target_amount):
+      if solution[0][i] not in mapp:
+        mapp[solution[0][i]] = len(mapp)
+    for i in range(self.target_amount):  # 替换编码
+      solution[1][i] = counter[mapp[solution[0][i]]]
+      counter[mapp[solution[0][i]]] += 1
+      solution[0][i] = mapp[solution[0][i]]
+    return
 
   def update_best_solution(self):
     # 更新全局最优解
@@ -186,7 +197,7 @@ class PSO_VRPTW:
       i += 1
     self.losses.append(min_cost)
     if pos != 0:
-        self.best_solution = copy.deepcopy(self.dot_solutions[pos])
+      self.best_solution = copy.deepcopy(self.dot_solutions[pos])
 
   def update_dot_best(self):
     # 更新每个粒子的历史最优值
@@ -238,24 +249,30 @@ class PSO_VRPTW:
     plt.show()
 
   def dot_improve(self):
-    """ 每一回合粒子向最优方案靠近，呃，这里用dot指代粒子 """
+    """ 每一回合粒子向最优方案靠近 """
+
     sum_factor = self.omega + self.c1 + self.c2
     selection = [self.omega / sum_factor, (self.omega + self.c1) / sum_factor, 1]
+
     for i in range(self.n):
       # 更新每一个dot的solution
       temp_volumes = [0 for i in range(self.trunk_amount)]  # 方案累积容量
+
+      # 朝最佳方案逼近
       for j in range(self.target_amount):
-        # 朝最佳方案逼近
         num = random.random()
+
         if num > selection[1]:
           self.dot_solutions[i][0][j] = self.best_solution[0][j]
         elif num > selection[2]:
           self.dot_solutions[i][0][j] = self.dot_bests[i][0][j]
         if random.random() < self.rate:  # 变异因子
           self.dot_solutions[i][0][j] = random.randint(0, len(self.trunk_volumes) - 1)
+
         while temp_volumes[self.dot_solutions[i][0][j]] + self.target_volumes[j] > self.trunk_volumes[self.dot_solutions[i][0][j]]:
           # TODO:如果超出容量限制,只能随机一辆车。不会无限循环，否则init_solution()处就会报错
           self.dot_solutions[i][0][j] = random.randint(0, len(self.trunk_volumes) - 1)
+
         temp_volumes[self.dot_solutions[i][0][j]] += self.target_volumes[j]
     # 必须满足货车容量>=任务要求，尽量满足[ET,LT]之间送货
 
